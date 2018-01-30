@@ -1330,14 +1330,20 @@ Result Thread::Run(int num_instructions) {
         IstreamOffset offset = ReadU32(&pc);
         if (env_->enable_jit) {
           jit::JITedFunction f = nullptr;
-          auto fi = env_->jit_compiled_functions_.find(offset);
+          auto fi = env_->jit_meta_.find(offset);
 
-          if (fi != env_->jit_compiled_functions_.end()) {
-            f = fi->second;
-          } else {
-            f = jit::compile(this, offset);
-            env_->jit_compiled_functions_.insert({offset, f});
+          if (fi != env_->jit_meta_.end()) {
+            Environment::JitMeta* meta = &fi->second;
+
+            if (meta->jit_fn) {
+              f = meta->jit_fn;
+            } else if (!meta->failed_jit) {
+              f = meta->jit_fn = jit::compile(this, meta->wasm_fn);
+            }
+
             TRAP_IF(env_->trap_on_failed_comp && f == nullptr, FailedJITCompilation);
+          } else {
+            assert(false);
           }
 
           if (f) {

@@ -18,6 +18,7 @@
 #define FUNCTIONBUILDER_HPP
 
 #include "type-dictionary.h"
+#include "stack.h"
 #include "ilgen/BytecodeBuilder.hpp"
 #include "ilgen/MethodBuilder.hpp"
 #include "ilgen/VirtualMachineOperandStack.hpp"
@@ -29,7 +30,7 @@ namespace jit {
 
 class FunctionBuilder : public TR::MethodBuilder {
  public:
-  FunctionBuilder(interp::Thread* thread, interp::IstreamOffset const offset, TypeDictionary* types);
+  FunctionBuilder(interp::Thread* thread, interp::DefinedFunc* fn, TypeDictionary* types);
   bool buildIL() override;
 
   /**
@@ -39,6 +40,9 @@ class FunctionBuilder : public TR::MethodBuilder {
    * @param value is the IlValue representing the value being pushed
    */
   void Push(TR::IlBuilder* b, const char* type, TR::IlValue* value);
+  void Push(TR::IlBuilder* b, TR::IlValue* value) {
+    Push(b, TypeFieldName(value->getDataType()), value);
+  }
 
   /**
    * @brief Generate pop from the interpreter stack
@@ -73,26 +77,34 @@ class FunctionBuilder : public TR::MethodBuilder {
  private:
   struct BytecodeWorkItem {
     TR::BytecodeBuilder* builder;
+    VirtualStack stack;
     const uint8_t* pc;
 
-    BytecodeWorkItem(TR::BytecodeBuilder* builder, const uint8_t* pc)
-      : builder(builder), pc(pc) {}
+    BytecodeWorkItem(TR::BytecodeBuilder* builder,
+                     VirtualStack stack,
+                     const uint8_t* pc)
+      : builder(builder), stack(stack), pc(pc) {}
   };
+
+  void SetUpLocals(const uint8_t** pc, VirtualStack* stack);
+  uint32_t GetLocalOffset(VirtualStack* stack, Type* type, uint32_t depth);
 
   template <typename T>
   const char* TypeFieldName() const;
+  const char* TypeFieldName(Type t) const;
+  const char* TypeFieldName(TR::DataType dt) const;
 
   template <typename T, typename TOpHandler>
-  void EmitBinaryOp(TR::IlBuilder* b, TOpHandler h);
+  void EmitBinaryOp(VirtualStack* stack, TOpHandler h);
 
   template <typename T, typename TOpHandler>
-  void EmitUnaryOp(TR::IlBuilder* b, TOpHandler h);
+  void EmitUnaryOp(VirtualStack* stack, TOpHandler h);
 
   template <typename T>
-  void EmitIntDivide(TR::IlBuilder* b);
+  void EmitIntDivide(TR::IlBuilder* b, VirtualStack* stack);
 
   template <typename T>
-  void EmitIntRemainder(TR::IlBuilder* b);
+  void EmitIntRemainder(TR::IlBuilder* b, VirtualStack* stack);
 
   template <typename>
   TR::IlValue* CalculateShiftAmount(TR::IlBuilder* b, TR::IlValue* amount);
@@ -100,12 +112,12 @@ class FunctionBuilder : public TR::MethodBuilder {
   std::vector<BytecodeWorkItem> workItems_;
 
   interp::Thread* thread_;
-  interp::IstreamOffset const offset_;
+  interp::DefinedFunc* fn_;
 
   TR::IlType* const valueType_;
   TR::IlType* const pValueType_;
 
-  bool Emit(TR::BytecodeBuilder* b, const uint8_t* istream, const uint8_t* pc);
+  bool Emit(TR::BytecodeBuilder* b, VirtualStack* stack, const uint8_t* istream, const uint8_t* pc);
 };
 
 }
